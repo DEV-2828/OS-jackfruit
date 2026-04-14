@@ -312,37 +312,74 @@ The following table mirrors the output of the `engine ps` command, summarizing a
 
 *Table 6.0: Container metadata summary from a complete demo run.*
 
-### 6.1 Multi-Container Supervision
-*Caption: Two independent containers (`alpha` and `beta`) running simultaneously under a single supervisor daemon.*
-`![Multi-Container Supervision](images/multi_container.png)`
+### 6.1 Multi-Container Supervision (Task 1)
+*Two independent containers (`alpha` and `beta`) running simultaneously under a single supervisor daemon.*
 
-### 6.2 Metadata Tracking
-*Caption: Output of the `engine ps` command reflecting active metadata including PIDs, states, and memory limits.*
-`![Metadata output](images/ps_metadata.png)`
+**Terminal 1 — Supervisor output:**
+![Supervisor starting and spawning containers](images/task1_phase2_supervisor_terminal1.png)
 
-### 6.3 Bounded-Buffer Logging
-*Caption: Log file contents captured through the producer-consumer logging pipeline, with producer/consumer activity trace visible on stderr.*
-`![Logging Buffer](images/buffer_log.png)`
+**Terminal 2 — Test script output showing both containers running + ps + shutdown:**
+![Two containers running with ps metadata and clean shutdown](images/task1_phase2_multi_container_terminal2.png)
 
-### 6.4 CLI and Control IPC
-*Caption: A CLI `start` command being issued and the supervisor successfully responding via the Unix Domain Socket.*
-`![CLI IPC](images/cli_ipc.png)`
+### 6.2 Metadata Tracking & CLI IPC (Task 2)
+*Output of the `engine ps` command reflecting active metadata including PIDs, states, and memory limits. Demonstrates the CLI-to-Supervisor IPC channel.*
 
-### 6.5 Soft-limit Kernel Warning
-*Caption: `dmesg` output illustrating the kernel module logging a soft-limit warning event when container RSS exceeded 40 MiB.*
-`![Soft limit](images/soft_limit.png)`
+**Terminal 1 — Supervisor receiving IPC requests:**
+![Supervisor receiving IPC requests via Unix socket](images/task2_phase3_cli_supervisor_terminal1.png)
 
-### 6.6 Hard-limit Enforcement
-*Caption: `dmesg` output showing a container being killed after exceeding 64 MiB hard limit, and the supervisor metadata reflecting `killed` state.*
-`![Hard limit](images/hard_limit.png)`
+**Terminal 2 — CLI start commands + ps metadata output:**
+![CLI start and ps metadata output](images/task2_phase3_cli_ipc_metadata_terminal2.png)
 
-### 6.7 Scheduling Experiments
-*Caption: Terminal output showing cycle count differences between `cpu_high` (nice -15) and `cpu_low` (nice +15) containers.*
-`![Scheduler logic](images/scheduler_exp.png)`
+### 6.3 Bounded-Buffer Logging (Task 3)
+*Log file contents captured through the producer-consumer logging pipeline. Producer/consumer thread activity visible on supervisor stderr.*
 
-### 6.8 Clean Teardown
-*Caption: `ps aux` output confirming no zombie processes remain; supervisor exit messages showing all threads joined and resources freed.*
-`![Clean Shutdown](images/shutdown.png)`
+**Terminal 1 — Supervisor showing [LOGGER] Producer/Consumer activity:**
+![Bounded buffer producer consumer activity](images/task3_phase4_logging_supervisor_terminal1.png)
+
+**Terminal 2 — CLI command that triggered logging:**
+![CLI start command triggering logging pipeline](images/task3_phase4_logging_cli_terminal2.png)
+
+**Log file contents (alpha.log) opened in editor:**
+![Log file contents captured by bounded buffer](images/task3_phase4_log_file_contents.png)
+
+### 6.4 CLI and Control IPC (Task 2)
+*See Section 6.2 above — the CLI IPC screenshots are combined with the metadata tracking demonstration.*
+
+### 6.5 Soft-limit Warning & Hard-limit Enforcement (Task 4)
+*`dmesg` output from the kernel module showing SOFT LIMIT exceeded (warning) and HARD LIMIT exceeded (SIGKILL sent). The supervisor reflects the container exit with signal 9.*
+
+**Terminal 1 — Supervisor output showing memory_hog container killed (signal 9):**
+![Supervisor showing memory_hog killed by kernel](images/task4_phase5_kernel_supervisor_terminal1.png)
+
+**Terminal 2 — CLI command that launched memory_hog:**
+![CLI start memory_hog with soft and hard limits](images/task4_phase5_kernel_cli_terminal2.png)
+
+**Terminal 3 — `dmesg` output showing SOFT LIMIT and HARD LIMIT events:**
+![dmesg showing soft and hard limit enforcement](images/task4_phase5_dmesg_soft_hard_limit.png)
+
+### 6.6 Hard-limit Enforcement (Task 4)
+*See Section 6.5 above — soft and hard limit enforcement are demonstrated together in the same dmesg output.*
+
+### 6.7 Scheduling Experiments (Task 5)
+*Containers running `cpu_hog` at contrasting `nice` values (-20 vs +19). `top` output confirms scheduler differential in CPU share allocation.*
+
+**Terminal 1 — Supervisor running the scheduling experiment:**
+![Supervisor during scheduling experiment](images/task5_phase6_scheduler_supervisor_terminal1.png)
+
+**Terminal 2 — CLI commands starting cpu_hog at nice -20 and nice +19:**
+![CLI start with nice values for scheduling experiment](images/task5_phase6_scheduler_cli_terminal2.png)
+
+**Terminal 3 — `top` output showing system CPU usage during experiment:**
+![top output showing CPU utilisation](images/task5_phase6_top_cpu_usage_terminal3.png)
+
+### 6.8 Clean Teardown (Task 6)
+*Supervisor receives SIGINT (Ctrl+C), terminates all containers, joins logger threads, and exits cleanly. `ps aux` confirms no zombie processes. `sudo rmmod monitor` unloads the kernel module.*
+
+**Terminal 1 — Supervisor clean shutdown + ps aux + rmmod:**
+![Clean teardown with ps aux and rmmod](images/task6_phase7_teardown_ps_aux_rmmod.png)
+
+**Terminal 2 — Final submission wrap-up commands:**
+![Final teardown CLI](images/task6_phase8_final_supervisor_terminal1.png)
 
 
 # 7. GITHUB LINK
