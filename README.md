@@ -1,111 +1,38 @@
-# Multi-Container Runtime
+# Multi-Container Runtime (OS-Jackfruit)
 
-A lightweight Linux container runtime in C with a long-running supervisor and a kernel-space memory monitor.
+A custom, lightweight Linux container runtime implemented in C, featuring a long-running user-space supervisor daemon and a strict kernel-space memory monitor (LKM).
 
-Read [`project-guide.md`](project-guide.md) for the full project specification.
+> **Important Note:** This repository contains the complete source code and technical implementation details of the project. For a comprehensive overview, including architectural diagrams, execution flowcharts, engineering analysis, empirical scheduling data, and system screenshots, **please strongly refer to the [`final_report_draft.md`](final_report_draft.md) file.** It is highly recommended to view the report file for a better representation of the project capabilities.
 
----
+## Overview
+
+This project bypasses enterprise container abstraction layers (like Docker) to interact directly with core Linux constructs. It solves multiple crucial system programming problems:
+
+1. **Process Isolation:** Uses `clone()` and `chroot` to jail processes into isolated CPU, PID, Mount, and UTS namespaces.
+2. **Concurrent IPC & Daemonization:** Employs a single Unix Domain Socket (`SOCK_STREAM`) to route asynchronous CLI instructions to a continuous Supervisor daemon managing multiple containers simultaneously.
+3. **Bounded-Buffer Logging:** Implements a thread-safe Producer-Consumer pipeline using `pthread_mutex_t` and POSIX Condition Variables to stream stdout/stderr without race conditions.
+4. **Kernel-Space Enforcement:** Utilizes a custom Loadable Kernel Module (`monitor.ko`) via `ioctl` interfaces to actively poll the Resident Set Size (RSS) of tracked PIDs. If hard limits are surpassed, the kernel injects an absolute `SIGKILL` to prevent resource starvation.
+
+## Empirical Scheduling Analysis
+
+This repository includes experimental testbeds used to contrast standard workloads (`cpu_hog` vs `io_pulse`). We manipulated execution priorities across multiple containers utilizing `setpriority()` (`nice` values from -20 to +19) to observe execution cycle counts under the Linux Completely Fair Scheduler (CFS). 
+
+Detailed experiment logs, bar charts, line graphs, and deep analysis are documented exclusively in the [project report](final_report_draft.md).
 
 ## Getting Started
 
-### 1. Fork the Repository
-
-1. Go to [github.com/shivangjhalani/OS-Jackfruit](https://github.com/shivangjhalani/OS-Jackfruit)
-2. Click **Fork** (top-right)
-3. Clone your fork:
-
-```bash
-git clone https://github.com/<your-username>/OS-Jackfruit.git
-cd OS-Jackfruit
-```
-
-### 2. Set Up Your VM
-
-You need an **Ubuntu 22.04 or 24.04** VM with **Secure Boot OFF**. WSL will not work.
-
-Install dependencies:
-
-```bash
-sudo apt update
-sudo apt install -y build-essential linux-headers-$(uname -r)
-```
-
-### 3. Run the Environment Check
-
-```bash
-cd boilerplate
-chmod +x environment-check.sh
-sudo ./environment-check.sh
-```
-
-Fix any issues reported before moving on.
-
-### 4. Prepare the Root Filesystem
-
-```bash
-mkdir rootfs-base
-wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
-tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
-
-# Make one writable copy per container you plan to run
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
-```
-
-Do not commit `rootfs-base/` or `rootfs-*` directories to your repository.
-
-### 5. Understand the Boilerplate
-
-The `boilerplate/` folder contains starter files:
-
-| File                   | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `engine.c`             | User-space runtime and supervisor skeleton          |
-| `monitor.c`            | Kernel module skeleton                              |
-| `monitor_ioctl.h`      | Shared ioctl command definitions                    |
-| `Makefile`             | Build targets for both user-space and kernel module |
-| `cpu_hog.c`            | CPU-bound test workload                             |
-| `io_pulse.c`           | I/O-bound test workload                             |
-| `memory_hog.c`         | Memory-consuming test workload                      |
-| `environment-check.sh` | VM environment preflight check                      |
-
-Use these as your starting point. You are free to restructure the repository however you want — the submission requirements are listed in the project guide.
-
-### 6. Build and Verify
+To explore the codebase and compile the environment on an Ubuntu Linux system (Secure Boot explicitly OFF):
 
 ```bash
 cd boilerplate
 make
 ```
 
-If this compiles without errors, your environment is ready.
+### Component Structure
+- `engine.c`: The core User-Space CLI router, Supervisor loops, thread synchronizers, and namespace spawners.
+- `monitor.c`: The Kernel-Space `get_mm_rss()` loop and `SIGKILL` enforcer.
+- `cpu_hog.c` / `io_pulse.c` / `memory_hog.c`: Custom binaries used for the performance and kernel enforcement experiments.
 
-### 7. GitHub Actions Smoke Check
+## Further Documentation
 
-Your fork will inherit a minimal GitHub Actions workflow from this repository.
-
-That workflow only performs CI-safe checks:
-
-- `make -C boilerplate ci`
-- user-space binary compilation (`engine`, `memory_hog`, `cpu_hog`, `io_pulse`)
-- `./boilerplate/engine` with no arguments must print usage and exit with a non-zero status
-
-The CI-safe build command is:
-
-```bash
-make -C boilerplate ci
-```
-
-This smoke check does not test kernel-module loading, supervisor runtime behavior, or container execution.
-
----
-
-## What to Do Next
-
-Read [`project-guide.md`](project-guide.md) end to end. It contains:
-
-- The six implementation tasks (multi-container runtime, CLI, logging, kernel monitor, scheduling experiments, cleanup)
-- The engineering analysis you must write
-- The exact submission requirements, including what your `README.md` must contain (screenshots, analysis, design decisions)
-
-Your fork's `README.md` should be replaced with your own project documentation as described in the submission package section of the project guide. (As in get rid of all the above content and replace with your README.md)
+Please read the **[Final Project Report](final_report_draft.md)** to examine all Phases of Development alongside their corresponding visual executions and architecture diagrams.
