@@ -62,7 +62,7 @@ sudo ./engine start mem_test ../rootfs-alpha /memory_hog --soft-mib 40 --hard-mi
 
 **Terminal 3 (Observe Kernel Actions):**
 ```bash
-dmesg | tail
+sudo dmesg | tail
 ```
 *Screenshots to capture: 5. Soft-limit warning in dmesg. 6. Hard-limit SIGKILL enforcement in dmesg, and the `ps` command showing the kill state.*
 
