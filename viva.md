@@ -13,10 +13,15 @@ This document contains targeted theory and code-specific questions to help you p
 3. **What is the fundamental difference between VMs and Containers?**
    *A:* VMs emulate hardware and run a full, heavy guest OS kernel. Containers share the host computer's kernel and only isolate processes at the user-space level using OS mechanisms like namespaces.
 4. **What are Linux Namespaces?**
-   *A:* Kernel features that wrap global system resources into an abstraction that makes a process believe it has its own isolated instance of the resource (e.g., PID, UTS, Mount).
-5. **How do namespaces differ from `cgroups` (control groups)?**
+   *A:* Namespaces are a kernel-level feature that partitions system resources to give a process a **restricted view** of the OS. While IPC builds bridges *between* processes, Namespaces build the **walls** that isolate them. They don't change the underlying resource, but they change what the process *can see* (e.g., its own private PID tree, hostname, and mount points).
+5. **Why are Namespaces mandatory for this container project?**
+   *A:* Without them, a container would just be a regular process. Namespaces provide the **isolation** required for:
+   - **Security:** Preventing a container from seeing or killing host processes (PID).
+   - **Independence:** Allowing each container to have its own private root filesystem (Mount) and hostname (UTS) without affecting the host or other containers.
+   - **Conflict Resolution:** Enabling different containers to use the same paths (like `/tmp`) or ports without colliding.
+6. **How do namespaces differ from `cgroups` (control groups)?**
    *A:* Namespaces isolate what a process can *see* (like hiding other processes or folders). `cgroups` isolate what a process can *use* (like capping memory or CPU usage). 
-6. **What is a Zombie Process, and how does your supervisor prevent it?**
+7. **What is a Zombie Process, and how does your supervisor prevent it?**
    *A:* A child process that has finished execution but still has an entry in the process table because the parent hasn't read its exit status. We prevent it by having the supervisor catch `SIGCHLD` and call `waitpid()`.
 
 **Code-Level Questions (engine.c):**
@@ -32,7 +37,11 @@ This document contains targeted theory and code-specific questions to help you p
 ## Task 2: Supervisor CLI and IPC
 **IPC Theory Questions:**
 1. **What is IPC (Inter-Process Communication) and why is it mandatory here?**
-   *A:* In operating systems, standard processes have isolated memory address spaces and cannot directly read each other's RAM. IPC provides kernel-facilitated channels (like sockets or pipes) for them to pass messages and synchronize safely.
+   *A:* IPC is a set of mechanisms that allow isolated processes to communicate and synchronize. In this project, it is **mandatory** because the containers are strictly walled off by Namespaces. Without IPC, there would be no way to:
+   - **Control:** Send start/stop commands from the CLI to the Supervisor (**UNIX Sockets**).
+   - **Observe:** Stream log data from the isolated container back to the host (**Pipes**).
+   - **Monitor:** Allow the Supervisor to inform the Kernel about memory limits (**IOCTL**).
+   IPC acts as the "bridge" across the isolation walls.
 2. **Contrast Shared Memory versus Message Passing.**
    *A:* Shared memory maps the same physical RAM slice to two processes; it's extremely fast but requires manual synchronization like mutexes to prevent corruption. Message passing (sockets/pipes) copies data between process spaces via the kernel, which handles synchronization natively.
 3. **What IPC method did you choose for the CLI to talk to the Supervisor?**
@@ -53,11 +62,20 @@ This document contains targeted theory and code-specific questions to help you p
 ## Task 3: Bounded-Buffer Logging
 **Theory Questions:**
 1. **Explain the Producer-Consumer problem in your project.**
-   *A:* Producers (threads reading from container pipes) want to put strings into the buffer. Consumers (threads writing to `.log` files) want to take strings out. They must be synchronized so producers wait if the buffer is full, and consumers wait if it's empty.
+   *A:* In this project, the **Producers** are the supervisor's threads that read from the container's output pipes. The **Consumer** is a single background thread that writes to `.log` files.
+   - **The Conflict:** Containers can generate logs at high speeds, while writing to a physical disk is slow.
+   - **The Solution:** The **Bounded Buffer** (Circular Queue) acts as a "shock absorber" or decoupler. It allows producers to quickly drop logs into RAM and continue reading from the container, while the consumer drains the buffer at its own pace.
+   - **Synchronization:** Since multiple producer threads (one per container) and the consumer all touch the same head/tail pointers, we use a Mutex for **Mutual Exclusion** and Condition Variables for **Signaling**.
 2. **Compare Pipes and Sockets for this logging task.**
-   *A:* Pipes are perfect here because they are unidirectional, lightweight byte streams implicitly linking parents and children. Sockets are bidirectional and slightly heavier, which is overkill for simple `stdout` streaming.
+   *A:* **Pipes** are used for logging because they are the most lightweight OS primitive for unidirectional data flow between a parent and child.
+   - **Pipes:** Are anonymous, have zero networking overhead, and are automatically inherited during `clone()`. They perfectly model the "stream" nature of stdout.
+   - **Sockets:** Are bidirectional and require a formal "connection" (handshake). Using them for simple logging would be overkill and add unnecessary complexity to the kernel's networking stack for a task that doesn't need to cross a network.
+   - **Backpressure:** Pipes have a fixed kernel buffer (~64KB). If the supervisor is too slow to read, the kernel naturally pauses the container's `write()` call, preventing data loss.
 3. **Why did you use Condition Variables instead of Semaphores?**
-   *A:* Condition variables naturally integrate with mutexes (`pthread_cond_wait`), allowing an atomic release of the mutex before going to sleep, which prevents deadlock.
+   *A:* **Condition Variables (CVs)** are preferred in POSIX multi-threading when used alongside a Mutex to monitor shared state.
+   - **Atomic Release:** `pthread_cond_wait` atomically unlocks the mutex and puts the thread to sleep. This is critical because it eliminates the race condition where a "signal" (e.g., "buffer is full") is sent between the time the thread checks the count and the time it goes to sleep.
+   - **State vs. Count:** Semaphores are just counters. CVs allow us to wait for complex conditions (like `is_empty && !shutting_down`) while holding a lock.
+   - **Simplicity:** CVs are naturally integrated with mutexes, making the code easier to reason about and less prone to deadlocks compared to managing multiple semaphore counts.
 4. **What would happen if the buffer was UNBOUNDED?**
    *A:* If a container prints logs infinitely faster than the hard drive can write them, the Supervisor's RAM usage would grow unchecked until the host OS killed the runtime (Out Of Memory).
 
